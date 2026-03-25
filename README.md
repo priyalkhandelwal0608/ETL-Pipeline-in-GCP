@@ -33,5 +33,4 @@ ETL-Pipeline-in-GCP/
 ├── app.py                 # Streamlit UI Dashboard
 ├── requirements.txt       # Project Dependencies
 └── .gitignore             # Optimized for Data Engineering
-#  NYC Airbnb AI: End-to-End MLOps Pipeline
-This project is a high-performance **ETL & MLOps Pipeline** designed to process massive datasets (NYC Airbnb Open Data) using **Apache Beam**. It integrates a **Local LLM (Llama 3 via Ollama)** to perform real-time data enrichment and text summarization, all visualized through a dynamic **Streamlit** dashboard.
+
