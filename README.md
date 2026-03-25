@@ -23,7 +23,7 @@ This project is a high-performance **ETL & MLOps Pipeline** designed to process 
 
 ---
 
-## ** Project Architecture**
+##  Project Architecture
 ```text
 ETL-Pipeline-in-GCP/
 ├── data/                  # Input CSV & Processed Results
