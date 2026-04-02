@@ -1,7 +1,7 @@
-# pipeline.py
 import apache_beam as beam
 import pandas as pd
-from apache_beam.options.pipeline_options import PipelineOptions
+import duckdb
+import os
 
 
 # -------------------------------
@@ -34,41 +34,78 @@ class TransformData(beam.DoFn):
                 row['price_category'] = 'High'
 
             yield row
-        except:
-            return
+
+        except Exception as e:
+            print("❌ Transform Error:", e)
+            yield row
 
 
 # -------------------------------
 # Run ETL Pipeline
 # -------------------------------
-def run_etl_pipeline(file_path: str) -> pd.DataFrame:
+def run_etl_pipeline(file_path: str,
+                     output_path: str = "data/output.csv",
+                     db_path: str = "data/airbnb.duckdb"):
 
+    print("🚀 Starting ETL Pipeline...")
+
+    os.makedirs("data", exist_ok=True)
+
+    # -------------------------------
     # STEP 1: Read CSV
+    # -------------------------------
     df = pd.read_csv(file_path)
     df.columns = df.columns.str.strip()
 
-    # STEP 2: CLEAN
-    df = df.drop(columns=['last_review', 'reviews_per_month'], errors='ignore')
+    if df.empty:
+        raise ValueError("❌ CSV is empty")
 
-    if 'name' in df.columns:
-        df['name'] = df['name'].astype(str).str.strip()
+    data = df.to_dict(orient='records')
 
-    # STEP 3: TRANSFORM
-    df['price'] = pd.to_numeric(df['price'], errors='coerce')
+    # -------------------------------
+    # STEP 2: Beam Pipeline
+    # -------------------------------
+    with beam.Pipeline() as p:
+        (
+            p
+            | "Create Data" >> beam.Create(data)
+            | "Clean Data" >> beam.ParDo(CleanData())
+            | "Transform Data" >> beam.ParDo(TransformData())
+            | "To DataFrame" >> beam.Map(lambda x: pd.DataFrame([x]))
+            | "Flatten DF" >> beam.CombineGlobally(
+                lambda dfs: pd.concat(list(dfs), ignore_index=True)
+            )
+            | "Write CSV" >> beam.Map(lambda df: df.to_csv(output_path, index=False))
+        )
 
-    def categorize(price):
-        if price < 100:
-            return 'Low'
-        elif price < 300:
-            return 'Medium'
-        else:
-            return 'High'
+    # -------------------------------
+    # STEP 3: Read Output
+    # -------------------------------
+    if not os.path.exists(output_path):
+        raise ValueError("❌ Beam did not produce output")
 
-    df['price_category'] = df['price'].apply(categorize)
+    final_df = pd.read_csv(output_path)
 
-    # Fix numeric columns
-    for col in ['minimum_nights', 'latitude', 'longitude']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    print("✅ Final Data:", final_df.shape)
 
-    return df
+    if final_df.empty:
+        raise ValueError("❌ Output CSV is empty")
+
+    # -------------------------------
+    # STEP 4: Store in DuckDB
+    # -------------------------------
+    con = duckdb.connect(db_path)
+
+    con.execute("DROP TABLE IF EXISTS listings")
+    con.register("temp_df", final_df)
+
+    con.execute("""
+        CREATE TABLE listings AS 
+        SELECT * FROM temp_df
+    """)
+
+    con.close()
+
+    print("✅ Data stored in DuckDB")
+
+    return final_df
