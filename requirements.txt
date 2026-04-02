@@ -1,4 +1,4 @@
 apache-beam
 streamlit
 pandas
-requests
+duckdb
